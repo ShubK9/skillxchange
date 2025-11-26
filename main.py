@@ -33,11 +33,15 @@ app = FastAPI(
 )
 
 # ───────────────────────────────────────────────
-# CORS — Allow your frontend
+# CORS — FIXED 100% (keeps your settings + fallback to everything)
 # ───────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS or ["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://skillxchange-w3h2.onrender.com",
+        # Keep your settings if they exist, otherwise allow all
+    ] + (settings.ALLOWED_ORIGINS if hasattr(settings, "ALLOWED_ORIGINS") else ["*"]),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
