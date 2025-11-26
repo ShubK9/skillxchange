@@ -1,32 +1,41 @@
 # backend/routes/users.py
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
-from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import select
+from typing import List
 
 from database import get_session
-from models import User
-from schemas import UserOut
-from auth import get_current_user
+from models import User, UserRead
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-router = APIRouter(prefix="/api/users", tags=["users"])
+router = APIRouter(prefix="/users", tags=["users"])
 
+# READABLE USER MODEL (safe for frontend)
+class UserRead(SQLModel):
+    id: int
+    name: str
+    email: str
+    username: str | None = None
+    role: str
+    bio: str | None = None
+    profile_picture: str | None = None
+    teaching_skills: List[str] = []
+    rating: float | None = None
+    created_at: str | None = None
 
-@router.get("/", response_model=list[UserOut])
-def list_users(
-    current_user: Annotated[User, Depends(get_current_user)],  # ← non-default first
-    db: Session = Depends(get_session),                        # ← default second
-):
-    """Get all users — protected route (login required)"""
-    users = db.exec(select(User)).all()
-    return users
+    class Config:
+        from_attributes = True
 
-
-@router.get("/{user_id}", response_model=UserOut)
-def get_user_by_id(
-    user_id: int,
-    db: Session = Depends(get_session),
-):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+@router.get("/", response_model=List[UserRead])
+async def get_all_users(db: AsyncSession = Depends(get_session)):
+    """Get all users — used by Explore page"""
+    result = await db.exec(select(User))
+    users = result.all()
+    
+    # Convert to list of dicts and ensure teaching_skills is always list
+    user_list = []
+    for u in users:
+        user_data = u.dict()
+        user_data["teaching_skills"] = u.teaching_skills or []
+        user_list.append(user_data)
+    
+    return user_list
