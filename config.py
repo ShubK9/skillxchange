@@ -38,4 +38,14 @@ class Settings(BaseSettings):
         "protected_namespaces": ()
     }
 
+    # ──────────────────────────────────────────────────────────────
+    # CRITICAL FIX: Render/Railway give postgres:// URLs
+    # SQLAlchemy 2.0 + psycopg2 needs postgresql+psycopg2://
+    # This runs automatically on every Settings() instantiation
+    # ──────────────────────────────────────────────────────────────
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.DATABASE_URL.startswith("postgres://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+
 settings = Settings()

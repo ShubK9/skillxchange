@@ -1,0 +1,45 @@
+# render.yaml — Perfect for SkillXchange (FastAPI + PostgreSQL)
+
+services:
+  - type: web
+    name: skillxchange-db
+    env: python
+    region: oregon           # Change if you want closer to your users (singapore, frankfurt, etc.)
+    plan: free                # Upgrade to starter/pro later if needed
+    branch: main              # Or master, dev, etc.
+
+    # Build steps
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+      python -c "from database import engine; from models import *; import sqlmodel; sqlmodel.SQLModel.metadata.create_all(engine)" || true
+
+    # How to start the app (Render sets PORT env var automatically)
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+
+    # Auto-deploy on every push to the branch
+    autoDeploy: true
+
+    # Health check — keeps your app alive + fast reloads
+    healthCheckPath: /docs    # FastAPI auto-docs = perfect health check
+
+    # Environment variables
+    envVars:
+      SECRET_KEY:
+        value: "a8f5c1d9e2b7c4f6a1d3e9f8b2c5d7e1f4a6b9c2d5e8f1a3b6c9d2e5f8a1c4d7e2f5"  # CHANGE THIS!
+      ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+
+      # This pulls the DB connection string automatically from the DB below
+      DATABASE_URL: 
+        fromDatabase:
+          name: Skillxchange-db
+          property: connectionString
+
+# PostgreSQL database (Render gives you a free 30-day trial, then still free tier)
+databases:
+  - name: Skillxchange-db
+    plan: free
+    region: oregon
+    # Optional: use "postgres" previewFeatures if you want latest version
+    # previewFeatures: ["postgres"]

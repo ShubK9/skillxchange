@@ -1,36 +1,42 @@
 # backend/database.py
 from typing import Generator
 from sqlmodel import SQLModel, create_engine, Session
-from config import settings
 import os
 
 # ──────────────────────────────────────────────────────────────
-# FIX: Railway/Render use postgres:// but SQLAlchemy requires
-# postgresql+psycopg2:// for sync driver
+# Get DATABASE_URL from environment (Render injects it automatically)
+# Fallback to SQLite for local development
 # ──────────────────────────────────────────────────────────────
-database_url = settings.DATABASE_URL
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+# Local fallback if no env var (great for running locally)
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///./skillxchange.db"
 
-# SQLite uses different threading rules
-connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+# Render/Railway give: postgres://user:pass@host:port/db
+# SQLModel + SQLAlchemy needs: postgresql+psycopg2://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
 
-# Create SQLAlchemy engine
+# SQLite needs this, PostgreSQL does NOT allow it
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+# Create engine with best production settings
 engine = create_engine(
-    database_url,
-    echo=False,            # change to True only while debugging SQL
+    DATABASE_URL,
+    echo=False,                    # Set True only when debugging SQL
     connect_args=connect_args,
-    pool_pre_ping=True,   # prevent stale connections on Render/Railway
-    pool_size=10,         # safe defaults for production
+    pool_pre_ping=True,            # Critical for Render (detects dead connections)
+    pool_size=10,
     max_overflow=20,
+    future=True,                   # SQLAlchemy 2.0+ mode
 )
 
 def get_session() -> Generator[Session, None, None]:
-    """FastAPI dependency injection for DB session."""
+    """Dependency for FastAPI routes"""
     with Session(engine) as session:
         yield session
 
 def init_db():
-    """Create tables on app startup."""
+    """Create all tables — called on startup"""
     SQLModel.metadata.create_all(engine)
