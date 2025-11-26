@@ -1,10 +1,11 @@
 # backend/routes/users.py
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import SQLModel, select  # Added SQLModel import
 from typing import List, Optional
 from database import get_session
 from models import User
 from sqlmodel.ext.asyncio.session import AsyncSession
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -17,7 +18,7 @@ class UserRead(SQLModel):
     name: str
     email: str
     username: Optional[str] = None
-    role: str
+    role: str = "both"  # Default value
     bio: Optional[str] = None
     profile_picture: Optional[str] = None
     teaching_skills: List[str] = []
@@ -26,11 +27,11 @@ class UserRead(SQLModel):
     sessions_completed: Optional[int] = None
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Required for SQLModel → Pydantic conversion
 
 
 # ───────────────────────────────────────────────
-# GET ALL USERS — EXPLORE PAGE
+# GET ALL USERS — EXPLORE PAGE (Your original logic, just safer)
 # ───────────────────────────────────────────────
 @router.get("/", response_model=List[UserRead])
 async def get_all_users(db: AsyncSession = Depends(get_session)):
@@ -41,12 +42,11 @@ async def get_all_users(db: AsyncSession = Depends(get_session)):
     result = await db.exec(select(User))
     users = result.all()
 
-    # Build clean list with proper URLs and defaults
     user_list = []
     for user in users:
-        # Fix profile picture URL (your frontend expects full URL)
+        # Build correct profile picture URL
         profile_pic = None
-        if user.avatar:  # Your DB column is 'avatar'
+        if user.avatar:
             filename = user.avatar.split("/")[-1] if "/" in user.avatar else user.avatar
             profile_pic = f"/uploads/profile-pics/{filename}"
 
@@ -57,7 +57,7 @@ async def get_all_users(db: AsyncSession = Depends(get_session)):
             "username": user.username,
             "role": user.role or "both",
             "bio": user.bio,
-            "profile_picture": profile_pic,                    # ← Frontend uses this exact key
+            "profile_picture": profile_pic,
             "teaching_skills": user.teaching_skills or [],
             "learning_interests": user.learning_interests or [],
             "rating": float(user.rating) if user.rating else 4.8,
@@ -68,7 +68,7 @@ async def get_all_users(db: AsyncSession = Depends(get_session)):
 
 
 # ───────────────────────────────────────────────
-# GET SINGLE USER BY ID (Optional — good for future)
+# GET SINGLE USER BY ID (Your original + fixed)
 # ───────────────────────────────────────────────
 @router.get("/{user_id}", response_model=UserRead)
 async def get_user(user_id: int, db: AsyncSession = Depends(get_session)):
