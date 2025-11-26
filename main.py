@@ -1,4 +1,6 @@
 # backend/main.py
+import os  # ← ONLY NEW LINE ADDED HERE
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles   # ← NEW IMPORT (only this)
@@ -16,6 +18,10 @@ from routes import (
     signaling_router,
     teachers_router,
 )
+
+# ← CREATE UPLOADS DIRECTORY IF IT DOESN'T EXIST (this fixes the error)
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
 
 app = FastAPI(
     title="SkillXchange",
