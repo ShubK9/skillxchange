@@ -7,7 +7,7 @@ from models import User
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 # ───────────────────────────────────────────────
