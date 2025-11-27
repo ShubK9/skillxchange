@@ -1,6 +1,6 @@
 # backend/routes/sessions.py
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from typing import Annotated
 from datetime import datetime
 import uuid
@@ -14,7 +14,6 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
 # ==================== EXISTING ENDPOINTS (unchanged) ====================
-
 @router.post("/", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(
     payload: SessionCreate,
@@ -109,15 +108,24 @@ def end_session(
     return {"message": "Session ended successfully", "session_id": session.id}
 
 
-# ==================== NEW: SESSION REQUEST FLOW (added below) ====================
+# ==================== FIXED & WORKING: SESSION REQUEST FLOW ====================
 
 @router.post("/request")
 async def request_session(
-    teacher_id: int,
+    payload: dict,  # Accept raw JSON body
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_session),
 ):
     """Learner sends a live session request to teacher"""
+    teacher_id = payload.get("teacherId") or payload.get("teacher_id")
+    if not teacher_id:
+        raise HTTPException(status_code=422, detail="teacherId is required")
+
+    try:
+        teacher_id = int(teacher_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="teacherId must be a number")
+
     learner_id = current_user.id
 
     if learner_id == teacher_id:
@@ -127,9 +135,7 @@ async def request_session(
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
 
-    # teacher not found")
-
-    # Optional: check if already has pending request
+    # Prevent duplicate pending requests
     existing = db.exec(
         select(SModel).where(
             SModel.teacher_id == teacher_id,
@@ -152,13 +158,11 @@ async def request_session(
     db.commit()
     db.refresh(session)
 
-    room_name = f"skillxchange_{session.id}_{uuid.uuid4().hex[:10]}"
+    room_name = f"skillxchange_{session.id}"
 
     return {
-        "success": True,
         "session_id": session.id,
         "room_name": room_name,
-        "message": "Request sent! Waiting for teacher to accept..."
     }
 
 
@@ -168,35 +172,34 @@ async def accept_session(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_session),
 ):
-    """Teacher accepts the live session request → session becomes active"""
     session = db.get(SModel, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     if session.teacher_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the teacher can accept this request")
+        raise HTTPException(status_code=403, detail="Only the teacher can accept")
 
     if session.status != "pending_request":
-        raise HTTPException(status_code=400, detail="This request was already handled")
+        raise HTTPException(status_code=400, detail="Request already handled")
 
-    # Activate the session
     session.status = "active"
     db.add(session)
     db.commit()
 
-    room_name = f"skillxchange_{session.id}_{uuid.uuid4().hex[:10]}"
+    room_name = f"skillxchange_{session.id}"
 
     return {
-        "success": True,
         "room_name": room_name,
-        "message": "Session started! Joining room..."
     }
+
+
 @router.get("/pending-count")
 async def get_pending_count(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_session),
 ):
-    if current_user.role != "teach":
+    # Allow learners too — just return 0
+    if current_user.role not in ["teach", "both"]:
         return {"count": 0}
     
     count = db.exec(
