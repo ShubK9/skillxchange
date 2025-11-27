@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, func
 from typing import Annotated
 from datetime import datetime
-import uuid
 
 from database import get_session
 from auth import get_current_user
@@ -12,14 +11,13 @@ from models import Session as SModel, User
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
-# ==================== REQUEST SESSION (WORKS 100%) ====================
+# ==================== REQUEST SESSION ====================
 @router.post("/request")
 async def request_session(
-    request_body: dict,  # ← Accept ANY JSON
+    request_body: dict,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_session),
 ):
-    # Accept both camelCase and snake_case
     teacher_id = request_body.get("teacherId") or request_body.get("teacher_id")
     if not teacher_id:
         raise HTTPException(status_code=422, detail="Missing teacherId")
@@ -36,7 +34,6 @@ async def request_session(
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
 
-    # Prevent duplicates
     existing = db.exec(
         select(SModel).where(
             SModel.teacher_id == teacher_id,
@@ -47,7 +44,6 @@ async def request_session(
     if existing:
         return {"session_id": existing.id, "room_name": f"skillxchange_{existing.id}"}
 
-    # Create pending session
     session = SModel(
         teacher_id=teacher_id,
         learner_id=current_user.id,
@@ -65,6 +61,20 @@ async def request_session(
         "session_id": session.id,
         "room_name": room_name
     }
+
+
+# ==================== NEW — GET SESSION STATUS ====================
+@router.get("/{session_id}")
+async def get_session_status(
+    session_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_session),
+):
+    session = db.get(SModel, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {"session_id": session.id, "status": session.status}
 
 
 # ==================== ACCEPT SESSION ====================
@@ -89,7 +99,7 @@ async def accept_session(
     return {"room_name": f"skillxchange_{session.id}"}
 
 
-# ==================== PENDING COUNT (WORKS FOR EVERYONE) ====================
+# ==================== PENDING COUNT ====================
 @router.get("/pending-count")
 async def get_pending_count(
     current_user: Annotated[User, Depends(get_current_user)],
