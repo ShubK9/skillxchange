@@ -12,13 +12,27 @@ from models import Session as SModel, User
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-@router.get("/pending-count")
+# ==================== PENDING COUNT — FIXED FOREVER ====================
+@router.get("/pending-count", response_model=dict)
 async def get_pending_count(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_session),
 ):
-    print("PENDING COUNT CALLED FOR USER:", current_user.id)  # ← Add this line
-    # ... rest of code
+    # Only teachers see pending requests
+    if current_user.role not in ["teach", "both"]:
+        return {"count": 0}
+
+    count = (
+        db.exec(
+            select(func.count()).where(
+                SModel.teacher_id == current_user.id,
+                SModel.status == "pending_request"
+            )
+        ).scalar_one_or_none()
+        or 0
+    )
+
+    return {"count": count}
 
 # ==================== REQUEST SESSION ====================
 @router.post("/request")
@@ -133,27 +147,3 @@ async def accept_session(
         "roomName": f"skillxchange_{session.id}",
         "message": "Session accepted! Joining room..."
     }
-
-
-# ==================== PENDING COUNT ====================
-@router.get("/pending-count")
-async def get_pending_count(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_session),
-):
-    if current_user.role not in ["teach", "both"]:
-        return {"count": 0}
-
-    count = (
-        db.exec(
-            select(func.count())
-            .select_from(SModel)
-            .where(
-                SModel.teacher_id == current_user.id,
-                SModel.status == "pending_request"
-            )
-        ).scalar()
-        or 0
-    )
-
-    return {"count": count}
