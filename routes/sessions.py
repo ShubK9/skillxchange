@@ -5,7 +5,7 @@ from typing import Annotated
 from datetime import datetime
 
 from database import get_session
-from models import SessionModel, User
+from models import Session as SessionModel, User
 from auth import get_current_user
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
