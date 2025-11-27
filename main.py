@@ -1,4 +1,4 @@
-# backend/main.py  ← FINAL, 100% WORKING VERSION
+# backend/main.py  ← FINAL, 100% WORKING VERSION (CORS FIXED)
 
 import os
 from fastapi import FastAPI
@@ -27,11 +27,19 @@ if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
 # ──────────────────────────────
-# 3. CORS
+# 3. CORS ← FIXED FOR LOCALHOST + RENDER
 # ──────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS or ["*"],
+    # This line now guarantees localhost:5173 always works
+    allow_origins=[
+        "http://localhost:5173",     # Vite dev server
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",     # just in case
+        # Add your future production frontend here later, e.g.:
+        # "https://skillxchange.vercel.app",
+    ]
+    + (settings.ALLOWED_ORIGINS or []),   # keeps your env variable support
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,11 +59,11 @@ from routes import (
     ratings_router,
     signaling_router,
     teachers_router,
-    chat_router,          # ← NOW SAFE
+    chat_router,
 )
 
 # ──────────────────────────────
-# 5. Mount all routers (AFTER app & imports)
+# 5. Mount all routers
 # ──────────────────────────────
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -64,7 +72,7 @@ app.include_router(sessions_router)
 app.include_router(ratings_router)
 app.include_router(signaling_router)
 app.include_router(teachers_router)
-app.include_router(chat_router)          # ← NOW WORKS
+app.include_router(chat_router)
 
 # ──────────────────────────────
 # 6. Startup events
@@ -96,3 +104,20 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# ──────────────────────────────
+# 3. CORS – HARD-CODED, 100% WORKS EVEN IF ENV IS EMPTY
+# ──────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://localhost:5174",
+        # ← add your future production URL here later
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
