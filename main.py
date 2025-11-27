@@ -1,9 +1,9 @@
 # backend/main.py
-import os  # ← ONLY NEW LINE ADDED HERE
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles   # ← NEW IMPORT (only this)
+from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db
@@ -17,12 +17,10 @@ from routes import (
     ratings_router,
     signaling_router,
     teachers_router,
+    chat_router,          # ← ADDED
 )
 
-from routes import chat_router  # ← add import
-app.include_router(chat_router)  # ← add this line
-
-# ← CREATE UPLOADS DIRECTORY IF IT DOESN'T EXIST (this fixes the error)
+# Create uploads folder if missing
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
@@ -35,9 +33,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# ───────────────────────────────────────────────
-# CORS — Allow your frontend
-# ───────────────────────────────────────────────
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS or ["*"],
@@ -46,33 +42,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ───────────────────────────────────────────────
-# NEW: Serve uploaded profile pictures
-# ───────────────────────────────────────────────
+# Serve uploaded files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# ───────────────────────────────────────────────
-# Startup: Initialize Database
-# ───────────────────────────────────────────────
+# Startup: Initialize DB + create message table automatically
 @app.on_event("startup")
 def on_startup():
     init_db()
     print("SkillXchange Backend — LAUNCHED — Ready for Tomorrow's Demo")
 
-# ───────────────────────────────────────────────
-# Mount All API Routes
-# ───────────────────────────────────────────────
-app.include_router(auth_router)        # /api/auth
-app.include_router(users_router)       # /api/users
-app.include_router(profile_router)     # /api/profile
-app.include_router(sessions_router)    # /api/sessions
-app.include_router(ratings_router)     # /api/ratings
-app.include_router(signaling_router)   # /ws/signaling/.
-app.include_router(teachers_router)    # /api/teachers
+# Auto-create Message table (import inside so no circular error)
+@app.on_event("startup")
+async def create_message_table():
+    from database import engine
+    from models import Message        # ← Imported here = NO IMPORT ERROR
+    Message.metadata.create_all(bind=engine, checkfirst=True)
+    print("Message table ready (created automatically if missing)")
 
-# ───────────────────────────────────────────────
-# Health & Root
-# ───────────────────────────────────────────────
+# Mount all routers
+app.include_router(auth_router)
+app.include_router(users_router)
+app.include_router(profile_router)
+app.include_router(sessions_router)
+app.include_router(ratings_router)
+app.include_router(signaling_router)
+app.include_router(teachers_router)
+app.include_router(chat_router)          # ← ADDED
+
+# Health & root
 @app.get("/")
 def root():
     return {
@@ -85,18 +82,3 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-# ───────────────────────────────────────────────
-# AUTO-CREATE MESSAGE TABLE (only runs once)
-# ───────────────────────────────────────────────
-from sqlmodel import SQLModel
-from models import Message  # ← make sure this import works
-
-@app.on_event("startup")
-async def create_message_table():
-    # This runs every time the backend starts
-    from database import engine
-    # Create only the Message table if it doesn't exist
-    Message.metadata.create_all(bind=engine, checkfirst=True)
-    print("Checked/Created 'message' table automatically")
