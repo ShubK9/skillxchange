@@ -104,20 +104,3 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-# ──────────────────────────────
-# 3. CORS – HARD-CODED, 100% WORKS EVEN IF ENV IS EMPTY
-# ──────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://localhost:5174",
-        # ← add your future production URL here later
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
