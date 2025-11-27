@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from typing import Annotated
 from datetime import datetime
+import uuid
 
 from database import get_session
 from auth import get_current_user
@@ -11,6 +12,8 @@ from schemas import SessionCreate, SessionOut
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
+
+# ==================== EXISTING ENDPOINTS (unchanged) ====================
 
 @router.post("/", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(
@@ -104,3 +107,87 @@ def end_session(
     db.commit()
 
     return {"message": "Session ended successfully", "session_id": session.id}
+
+
+# ==================== NEW: SESSION REQUEST FLOW (added below) ====================
+
+@router.post("/request")
+async def request_session(
+    teacher_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_session),
+):
+    """Learner sends a live session request to teacher"""
+    learner_id = current_user.id
+
+    if learner_id == teacher_id:
+        raise HTTPException(status_code=400, detail="Cannot request session with yourself")
+
+    teacher = db.get(User, teacher_id)
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    # teacher not found")
+
+    # Optional: check if already has pending request
+    existing = db.exec(
+        select(SModel).where(
+            SModel.teacher_id == teacher_id,
+            SModel.learner_id == learner_id,
+            SModel.status == "pending_request"
+        )
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="You already have a pending request")
+
+    # Create pending session
+    session = SModel(
+        teacher_id=teacher_id,
+        learner_id=learner_id,
+        topic="Live Session Request",
+        status="pending_request",
+        start_time=datetime.utcnow(),
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    room_name = f"skillxchange_{session.id}_{uuid.uuid4().hex[:10]}"
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "room_name": room_name,
+        "message": "Request sent! Waiting for teacher to accept..."
+    }
+
+
+@router.post("/accept/{session_id}")
+async def accept_session(
+    session_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_session),
+):
+    """Teacher accepts the live session request → session becomes active"""
+    session = db.get(SModel, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the teacher can accept this request")
+
+    if session.status != "pending_request":
+        raise HTTPException(status_code=400, detail="This request was already handled")
+
+    # Activate the session
+    session.status = "active"
+    db.add(session)
+    db.commit()
+
+    room_name = f"skillxchange_{session.id}_{uuid.uuid4().hex[:10]}"
+
+    return {
+        "success": True,
+        "room_name": room_name,
+        "message": "Session started! Joining room..."
+    }
