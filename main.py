@@ -19,6 +19,9 @@ from routes import (
     teachers_router,
 )
 
+from routes import chat_router  # ← add import
+app.include_router(chat_router)  # ← add this line
+
 # ← CREATE UPLOADS DIRECTORY IF IT DOESN'T EXIST (this fixes the error)
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
