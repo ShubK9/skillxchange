@@ -11,6 +11,7 @@ from models import Session as SModel, User
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
+
 # ==================== REQUEST SESSION ====================
 @router.post("/request")
 async def request_session(
@@ -18,22 +19,29 @@ async def request_session(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_session),
 ):
-    teacher_id = request_body.get("teacherId") or request_body.get("teacher_id")
+    # Accept both camelCase and snake_case from frontend
+    teacher_id = (
+        request_body.get("teacherId")
+        or request_body.get("teacher_id")
+        or request_body.get("teacherID")
+    )
+
     if not teacher_id:
         raise HTTPException(status_code=422, detail="Missing teacherId")
 
     try:
         teacher_id = int(teacher_id)
-    except:
-        raise HTTPException(status_code=422, detail="teacherId must be a number")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="teacherId must be a valid number")
 
     if current_user.id == teacher_id:
-        raise HTTPException(status_code=400, detail="Cannot request yourself")
+        raise HTTPException(status_code=400, detail="Cannot request session with yourself")
 
     teacher = db.get(User, teacher_id)
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
 
+    # Prevent duplicate pending requests
     existing = db.exec(
         select(SModel).where(
             SModel.teacher_id == teacher_id,
@@ -41,9 +49,15 @@ async def request_session(
             SModel.status == "pending_request"
         )
     ).first()
-    if existing:
-        return {"session_id": existing.id, "room_name": f"skillxchange_{existing.id}"}
 
+    if existing:
+        return {
+            "sessionId": existing.id,
+            "roomName": f"skillxchange_{existing.id}",
+            "status": existing.status
+        }
+
+    # Create new session
     session = SModel(
         teacher_id=teacher_id,
         learner_id=current_user.id,
@@ -58,12 +72,13 @@ async def request_session(
     room_name = f"skillxchange_{session.id}"
 
     return {
-        "session_id": session.id,
-        "room_name": room_name
+        "sessionId": session.id,
+        "roomName": room_name,
+        "status": "pending_request"
     }
 
 
-# ==================== NEW — GET SESSION STATUS ====================
+# ==================== GET SESSION STATUS ====================
 @router.get("/{session_id}")
 async def get_session_status(
     session_id: int,
@@ -74,7 +89,15 @@ async def get_session_status(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return {"session_id": session.id, "status": session.status}
+    # Optional: security check (only participants can see status)
+    if session.teacher_id != current_user.id and session.learner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    return {
+        "sessionId": session.id,
+        "status": session.status,
+        "roomName": f"skillxchange_{session.id}"
+    }
 
 
 # ==================== ACCEPT SESSION ====================
@@ -87,16 +110,21 @@ async def accept_session(
     session = db.get(SModel, session_id)
     if not session:
         raise HTTPException(404, "Session not found")
+
     if session.teacher_id != current_user.id:
-        raise HTTPException(403, "Not your request")
+        raise HTTPException(403, "Only the teacher can accept")
+
     if session.status != "pending_request":
-        raise HTTPException(400, "Already handled")
+        raise HTTPException(400, "Session is not pending")
 
     session.status = "active"
     db.add(session)
     db.commit()
 
-    return {"room_name": f"skillxchange_{session.id}"}
+    return {
+        "roomName": f"skillxchange_{session.id}",
+        "message": "Session accepted! Joining room..."
+    }
 
 
 # ==================== PENDING COUNT ====================
@@ -108,12 +136,16 @@ async def get_pending_count(
     if current_user.role not in ["teach", "both"]:
         return {"count": 0}
 
-    count = db.exec(
-        select(func.count()).select_from(SModel)
-        .where(
-            SModel.teacher_id == current_user.id,
-            SModel.status == "pending_request"
-        )
-    ).scalar() or 0
+    count = (
+        db.exec(
+            select(func.count())
+            .select_from(SModel)
+            .where(
+                SModel.teacher_id == current_user.id,
+                SModel.status == "pending_request"
+            )
+        ).scalar()
+        or 0
+    )
 
     return {"count": count}
