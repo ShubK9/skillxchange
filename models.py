@@ -10,7 +10,8 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     name: str
     password_hash: str
-    role: str = Field(default="pending")
+
+    role: str = Field(default="pending")   # pending | learner | teacher | both
     credit_points: int = Field(default=20)
     bio: Optional[str] = None
     avatar: Optional[str] = None
@@ -21,12 +22,13 @@ class User(SQLModel, table=True):
 
     sessions_as_teacher: List["Session"] = Relationship(
         back_populates="teacher",
-        sa_relationship_kwargs={"foreign_keys": "Session.teacher_id"}  # ← fixes teacher
+        sa_relationship_kwargs={"foreign_keys": "Session.teacher_id"}
     )
     sessions_as_learner: List["Session"] = Relationship(
         back_populates="learner",
-        sa_relationship_kwargs={"foreign_keys": "Session.learner_id"}  # ← fixes learner
+        sa_relationship_kwargs={"foreign_keys": "Session.learner_id"}
     )
+
     ratings_given: List["Rating"] = Relationship(
         back_populates="rater",
         sa_relationship_kwargs={"foreign_keys": "Rating.rater_id"}
@@ -39,26 +41,33 @@ class User(SQLModel, table=True):
 
 class Session(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    description: Optional[str] = None
-    scheduled_at: datetime
-    duration_minutes: int = Field(default=30)
-    status: str = Field(default="pending")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    # WebRTC & pending-requests logic
+    topic: Optional[str] = None
+    room_name: Optional[str] = None
+
+    status: str = Field(
+        default="pending_request"
+    )  # values → pending_request | active | completed | declined
+
+    start_time: datetime = Field(default_factory=datetime.utcnow)
+    end_time: Optional[datetime] = None
+
+    # Foreign keys
     teacher_id: int = Field(foreign_key="user.id")
-    learner_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    learner_id: int = Field(foreign_key="user.id")
 
-    # ← FIXED: explicitly tell SQLAlchemy which foreign key to use
     teacher: "User" = Relationship(
         back_populates="sessions_as_teacher",
         sa_relationship_kwargs={"foreign_keys": "Session.teacher_id"}
     )
-    learner: Optional["User"] = Relationship(
+    learner: "User" = Relationship(
         back_populates="sessions_as_learner",
         sa_relationship_kwargs={"foreign_keys": "Session.learner_id"}
     )
-    ratings: List["Rating"] = Relationship(back_populates="session")
+
+    # Rating after session
+    rating: Optional[int] = None
 
 
 class Rating(SQLModel, table=True):
@@ -82,7 +91,6 @@ class Rating(SQLModel, table=True):
     session: "Session" = Relationship(back_populates="ratings")
 
 
-# ← MESSAGE MODEL — ADDED AT THE END (unchanged)
 class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     sender_id: int = Field(foreign_key="user.id")
