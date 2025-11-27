@@ -18,7 +18,7 @@ from models import User
 # ───────────────────────────────────────────────
 password_hash = PasswordHash.recommended()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=None, auto_error=False)
 
 
 def hash_password(password: str) -> str:
@@ -47,16 +47,21 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_session)
 ) -> User:
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")
         if not user_id:
-            raise JWTError()
+            raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
     user = db.get(User, int(user_id))
