@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status, UploadFile, File
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pwdlib import PasswordHash
@@ -18,16 +18,17 @@ from models import User
 # ───────────────────────────────────────────────
 password_hash = PasswordHash.recommended()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=None, auto_error=False)
-
+# ⚠ tokenUrl MUST be a string (cannot be None) otherwise Render crashes
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/auth/login",    # only for docs schema — JWT login still works
+    auto_error=False               # allows us to manually raise 401
+)
 
 def hash_password(password: str) -> str:
     return password_hash.hash(password)
 
-
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return password_hash.verify(plain_password, hashed_password)
-
 
 # ───────────────────────────────────────────────
 # JWT Token Creation
@@ -39,9 +40,8 @@ def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None)
     to_encode = {"sub": str(user_id), "exp": expire}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
-
 # ───────────────────────────────────────────────
-# Get Current User — ALLOWS PENDING USERS (FOR ONBOARDING)
+# Get Current User — PRIMARY AUTH FUNCTION
 # ───────────────────────────────────────────────
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -51,17 +51,19 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise JWTError()
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     user = db.get(User, int(user_id))
@@ -69,7 +71,6 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     return user
-
 
 # ───────────────────────────────────────────────
 # Optional current user (for public routes)
@@ -80,34 +81,29 @@ async def get_current_user_optional(
 ) -> Optional[User]:
     if not token:
         return None
-
     try:
         return await get_current_user(token, db)
     except Exception:
         return None
 
-
 # ───────────────────────────────────────────────
-# NEW: Get current user BUT allow "pending" role (used in onboarding)
+# Allow pending users (onboarding)
 # ───────────────────────────────────────────────
 async def get_current_user_allow_pending(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_session)
 ) -> User:
     user = await get_current_user(token, db)
-    # Allow both full users and users who are still in onboarding (role="pending")
-    return user
-
+    return user  # pending users allowed by design
 
 # ──────────────────────────────────────────────────────
-# NEW: GET /auth/me — Returns full profile with correct profilePic URL
+# GET /auth/me — Return full profile with correct pic URL
 # ──────────────────────────────────────────────────────
 async def get_current_user_profile(
     current_user: User = Depends(get_current_user_allow_pending)
 ) -> dict:
     profile_pic = None
-    if current_user.profilePic:
-        # Assuming files are saved in ./uploads/profile-pics/
+    if getattr(current_user, "profilePic", None):
         filename = current_user.profilePic.split("/")[-1]
         profile_pic = f"/uploads/profile-pics/{filename}"
 
