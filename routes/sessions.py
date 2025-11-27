@@ -9,8 +9,16 @@ from database import get_session
 from auth import get_current_user
 from models import Session as SModel, User
 
-router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+router = APIRouter(prefix="/sessions", tags=["sessions"])
 
+
+@router.get("/pending-count")
+async def get_pending_count(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_session),
+):
+    print("PENDING COUNT CALLED FOR USER:", current_user.id)  # ← Add this line
+    # ... rest of code
 
 # ==================== REQUEST SESSION ====================
 @router.post("/request")
