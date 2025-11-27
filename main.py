@@ -85,3 +85,18 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ───────────────────────────────────────────────
+# AUTO-CREATE MESSAGE TABLE (only runs once)
+# ───────────────────────────────────────────────
+from sqlmodel import SQLModel
+from models import Message  # ← make sure this import works
+
+@app.on_event("startup")
+async def create_message_table():
+    # This runs every time the backend starts
+    from database import engine
+    # Create only the Message table if it doesn't exist
+    Message.metadata.create_all(bind=engine, checkfirst=True)
+    print("Checked/Created 'message' table automatically")
