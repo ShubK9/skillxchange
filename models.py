@@ -21,11 +21,11 @@ class User(SQLModel, table=True):
 
     sessions_as_teacher: List["Session"] = Relationship(
         back_populates="teacher",
-        sa_relationship_kwargs={"foreign_keys": "Session.teacher_id"}
+        sa_relationship_kwargs={"foreign_keys": "Session.teacher_id"}  # ← fixes teacher
     )
     sessions_as_learner: List["Session"] = Relationship(
         back_populates="learner",
-        sa_relationship_kwargs={"foreign_keys": "Session.learner_id"}
+        sa_relationship_kwargs={"foreign_keys": "Session.learner_id"}  # ← fixes learner
     )
     ratings_given: List["Rating"] = Relationship(
         back_populates="rater",
@@ -49,8 +49,15 @@ class Session(SQLModel, table=True):
     teacher_id: int = Field(foreign_key="user.id")
     learner_id: Optional[int] = Field(default=None, foreign_key="user.id")
 
-    teacher: User = Relationship(back_populates="sessions_as_teacher")
-    learner: Optional[User] = Relationship(back_populates="sessions_as_learner")
+    # ← FIXED: explicitly tell SQLAlchemy which foreign key to use
+    teacher: "User" = Relationship(
+        back_populates="sessions_as_teacher",
+        sa_relationship_kwargs={"foreign_keys": "Session.teacher_id"}
+    )
+    learner: Optional["User"] = Relationship(
+        back_populates="sessions_as_learner",
+        sa_relationship_kwargs={"foreign_keys": "Session.learner_id"}
+    )
     ratings: List["Rating"] = Relationship(back_populates="session")
 
 
@@ -64,12 +71,18 @@ class Rating(SQLModel, table=True):
     ratee_id: int = Field(foreign_key="user.id")
     session_id: int = Field(foreign_key="session.id")
 
-    rater: User = Relationship(back_populates="ratings_given")
-    ratee: User = Relationship(back_populates="ratings_received")
-    session: Session = Relationship(back_populates="ratings")
+    rater: "User" = Relationship(
+        back_populates="ratings_given",
+        sa_relationship_kwargs={"foreign_keys": "Rating.rater_id"}
+    )
+    ratee: "User" = Relationship(
+        back_populates="ratings_received",
+        sa_relationship_kwargs={"foreign_keys": "Rating.ratee_id"}
+    )
+    session: "Session" = Relationship(back_populates="ratings")
 
 
-# ← MESSAGE MODEL — ADDED AT THE END
+# ← MESSAGE MODEL — ADDED AT THE END (unchanged)
 class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     sender_id: int = Field(foreign_key="user.id")
