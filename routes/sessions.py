@@ -191,3 +191,20 @@ async def accept_session(
         "room_name": room_name,
         "message": "Session started! Joining room..."
     }
+@router.get("/pending-count")
+async def get_pending_count(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_session),
+):
+    if current_user.role != "teach":
+        return {"count": 0}
+    
+    count = db.exec(
+        select(func.count()).select_from(SModel)
+        .where(
+            SModel.teacher_id == current_user.id,
+            SModel.status == "pending_request"
+        )
+    ).scalar() or 0
+    
+    return {"count": count}
